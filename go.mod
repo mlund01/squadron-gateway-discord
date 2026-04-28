@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/bwmarrin/discordgo v0.28.1
-	github.com/mlund01/squadron-gateway-sdk v0.0.0-20260428012704-d6d909843b6d
+	github.com/mlund01/squadron-gateway-sdk v0.0.1
 )
 
 require (
