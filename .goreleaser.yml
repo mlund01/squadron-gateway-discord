@@ -1,0 +1,42 @@
+version: 2
+
+# Squadron's gateway loader expects:
+#   - archive name:  <repo>_<GOOS>_<GOARCH>.{tar.gz,zip}
+#   - binary inside: gateway (or gateway.exe on Windows)
+#   - checksums.txt with sha256 hashes
+# See squadron/internal/release/download.go for the resolver.
+
+project_name: squadron-gateway-discord
+
+builds:
+  - id: gateway
+    binary: gateway
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - id: gateway
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: mlund01
+    name: squadron-gateway-discord

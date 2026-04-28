@@ -1,0 +1,9 @@
+# Compiled binary — produced by `go build` and by goreleaser; not
+# version-controlled. The release pipeline publishes platform archives
+# instead.
+/gateway
+/squadron-gateway-discord
+
+# Local dev artifacts
+.DS_Store
+dist/
