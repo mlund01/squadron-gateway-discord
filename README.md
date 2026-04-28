@@ -1,146 +1,85 @@
 # squadron-gateway-discord
 
-Squadron gateway that bridges `builtins.human.ask` requests to a
-Discord channel. New questions become messages with quick-reply
-buttons; clicking a button (or replying to the message) records the
-answer back in squadron.
+A Squadron gateway that surfaces `builtins.human.ask` questions in a
+Discord channel. When an agent asks a question, the gateway posts a
+message with quick-reply buttons (or a multi-select dropdown); the
+human's answer flows back to the agent via a button click or message
+reply.
 
-## Status
+## Setup
 
-Reference implementation of the Squadron gateway model. Demonstrates:
+### 1. Create the Discord application
 
-- Subscribing to live `human_input_requested` / `human_input_resolved`
-  events pushed from squadron.
-- Catching up after disconnects via the SDK's `ListHumanInputs(since:…)`
-  call and a local checkpoint file.
-- Submitting resolutions via `ResolveHumanInput`, with idempotent
-  handling of "already answered by another surface".
+- Go to <https://discord.com/developers/applications> and click **New
+  Application**. Name it whatever you want (e.g. `squadron`).
+- Open the app → **Bot** tab → **Add Bot** → **Yes, do it**.
+- Under **Privileged Gateway Intents**, enable **Message Content
+  Intent** (required so the gateway can read free-text replies).
+- Under **Token**, click **Reset Token**, copy the value, and stash it
+  in squadron:
 
-## Configure
+  ```bash
+  squadron vars set discord_bot_token <token>
+  ```
 
-In your squadron config:
+### 2. Invite the bot to your server
+
+- App page → **OAuth2** → **URL Generator**.
+- **Scopes**: `bot`, `applications.commands`.
+- **Bot Permissions**: `View Channels`, `Send Messages`, `Read Message
+  History`.
+- Copy the generated URL, open it in a browser, pick the server,
+  **Authorize**.
+
+### 3. Pick a channel
+
+In Discord: **Settings → Advanced → Developer Mode = on**, then
+right-click the target channel → **Copy Channel ID**.
+
+```bash
+squadron vars set discord_channel_id <id>
+```
+
+### 4. Add the gateway to your squadron config
 
 ```hcl
 variable "discord_bot_token" {
   secret = true
 }
 
+variable "discord_channel_id" {}
+
 gateway "discord" {
   source  = "github.com/mlund01/squadron-gateway-discord"
-  version = "local"   # or a release tag once published
+  version = "v0.1.0"
 
   settings = {
     bot_token       = vars.discord_bot_token
-    channel_id      = "1234567890123456789"
+    channel_id      = vars.discord_channel_id
     checkpoint_path = "${path.cwd}/.squadron/discord-gateway.json"
   }
 }
 ```
 
-### Targeting a channel by name
+Restart squadron and the log should show `gateway "discord" started`.
+The next `builtins.human.ask` call lands in your channel.
 
-`channel_id` is the most stable handle (renaming a channel won't break
-the gateway), but you can target by name instead:
+## Settings reference
 
-```hcl
-settings = {
-  bot_token    = vars.discord_bot_token
-  channel_name = "agent-questions"   # leading "#" is optional
-  # guild_name = "My Server"          # only needed if the bot is in
-                                      # multiple guilds that all have
-                                      # a channel by this name
-}
-```
+| Setting           | Required | Notes                                                                 |
+| ----------------- | -------- | --------------------------------------------------------------------- |
+| `bot_token`       | yes      | Bot token from the Discord developer portal. Use a `secret` variable. |
+| `channel_id`      | one of   | Numeric channel ID (right-click → Copy Channel ID).                   |
+| `channel_name`    | one of   | Channel name (e.g. `general` or `#general`). Resolved at startup.     |
+| `guild_name`      | optional | Only needed if the bot is in multiple servers with the same channel name. |
+| `checkpoint_path` | optional | File the gateway uses to remember the last event it processed across restarts. Defaults to `./.squadron-discord-gateway.json`. |
 
-Set exactly one of `channel_id` or `channel_name`. When `channel_name`
-is used, the gateway resolves it to an ID at startup by listing the
-bot's guilds — bumping the bot's `View Channels` permission is required
-for the lookup to see the channel.
+Set exactly one of `channel_id` or `channel_name`. `channel_id` is the
+most stable handle — renaming a channel won't break the gateway.
+`channel_name` is friendlier but pays a startup REST round-trip and
+will break if the channel is renamed.
 
-`version = "local"` skips the GitHub download and expects the binary
-at `.squadron/gateways/<platform>/discord/local/gateway`.
-
-To install locally:
-
-```bash
-go build -o gateway .
-mkdir -p ~/.squadron/gateways/darwin-arm64/discord/local
-mv gateway ~/.squadron/gateways/darwin-arm64/discord/local/gateway
-```
-
-(Adjust the platform path to match `runtime.GOOS-runtime.GOARCH`.)
-
-## Releasing
-
-Releases are cut by goreleaser on tag push. The pipeline produces the
-exact archive layout squadron's gateway loader expects (`<repo>_<os>_<arch>.tar.gz`
-containing a single `gateway` binary, plus `checksums.txt`).
-
-To ship a new version:
-
-```bash
-# Drop the local replace directive in go.mod first — release builds
-# must resolve squadron-gateway-sdk from its published module path,
-# not a sibling worktree.
-go mod edit -dropreplace github.com/mlund01/squadron-gateway-sdk
-go mod tidy
-
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The `Release` workflow ([.github/workflows/release.yml](.github/workflows/release.yml))
-runs goreleaser ([.goreleaser.yml](.goreleaser.yml)) and uploads the
-archives + checksums to the matching GitHub release.
-
-## Discord setup
-
-One-time, ~5 minutes.
-
-### 1. Create the application
-
-- Go to https://discord.com/developers/applications and click **New Application**.
-- Name it whatever you want (e.g. `squadron`). Save.
-
-### 2. Add a bot
-
-- Open the app → **Bot** tab in the sidebar → **Add Bot** → **Yes, do it**.
-- Under **Privileged Gateway Intents**, enable **Message Content Intent**
-  (required so the gateway can read free-text replies).
-- Under **Token**, click **Reset Token**, copy the value, and stash it in
-  squadron:
-
-  ```bash
-  squadron vars set discord_bot_token <token>
-  ```
-
-### 3. Invite the bot to your server
-
-- App page → **OAuth2** → **URL Generator**.
-- **Scopes**: `bot`, `applications.commands`.
-- **Bot Permissions**: `View Channels`, `Send Messages`, `Read Message
-  History`.
-- Copy the generated URL, open it in a browser, pick the server, **Authorize**.
-
-### 4. Get the channel id
-
-- In Discord client: **Settings → Advanced → Developer Mode = on**.
-- Right-click the target channel → **Copy Channel ID**.
-- Either set it as a var…
-
-  ```bash
-  squadron vars set discord_channel_id <id>
-  ```
-
-  …or hard-code it in `channel_id` in your HCL.
-
-### 5. Restart squadron
-
-The gateway is loaded at startup. After setting the vars (or editing the
-HCL) run `scripts/restart.sh` (or your equivalent) and check the squadron
-log for `gateway "discord" started`.
-
-## What the user sees
+## What the operator sees
 
 For a question with choices:
 
@@ -153,5 +92,39 @@ The schemas are identical except for the past 24 hours of writes.
 `databricks_explore › discover`
 ```
 
-For free-text or "Other": reply to the message in Discord and the
-gateway forwards the body as the response.
+Click a button to answer. For multi-select questions (`multi_select:
+true` on the agent's tool call) the channel shows a dropdown picker
+with `min=1, max=N` instead of buttons. For free-text questions, reply
+to the message in Discord and the body becomes the answer.
+
+When a question is resolved (here, in Discord, in Command Center, or
+anywhere else), the message is edited to strike through the question
+and append the answer.
+
+## Local development
+
+If you want to hack on the gateway itself, point your squadron config
+at a locally-built binary:
+
+```hcl
+gateway "discord" {
+  version = "local"   # skips the GitHub download
+  # source omitted intentionally
+  settings = { ... }
+}
+```
+
+Then build and install:
+
+```bash
+go build -o gateway .
+mkdir -p ~/.squadron/gateways/darwin-arm64/discord/local
+mv gateway ~/.squadron/gateways/darwin-arm64/discord/local/gateway
+```
+
+Adjust the platform path to match `runtime.GOOS-runtime.GOARCH`.
+
+## See also
+
+- [`squadron-gateway-sdk`](https://github.com/mlund01/squadron-gateway-sdk)
+  — the Go SDK if you want to build a gateway for some other system.
