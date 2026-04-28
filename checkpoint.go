@@ -7,14 +7,10 @@ import (
 	"time"
 )
 
-// Checkpoint persistence for the catch-up cursor.
-//
-// The gateway keeps a single timestamp on disk: the latest
-// requested_at OR resolved_at it has processed. On restart, catchUp
-// asks squadron for everything since this timestamp so transient
-// disconnects don't drop events. Lost / corrupt files fall back to
-// zero (replay everything available), which is safe because squadron
-// returns a finite recent window.
+// Checkpoint = the latest event timestamp the gateway has processed,
+// persisted so a restart can replay only what it missed. Lost or
+// corrupt files fall back to zero (replay everything in squadron's
+// recent window).
 
 type checkpoint struct {
 	Latest time.Time `json:"latest"`
@@ -39,8 +35,7 @@ func (g *discordGateway) advanceCheckpoint(t time.Time) {
 	if t.IsZero() || g.checkpointPath == "" {
 		return
 	}
-	cp := checkpoint{Latest: t}
-	data, err := json.Marshal(cp)
+	data, err := json.Marshal(checkpoint{Latest: t})
 	if err != nil {
 		return
 	}

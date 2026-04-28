@@ -8,17 +8,11 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// resolveChannelByName walks the guilds the bot is a member of and
-// returns the ID of the text channel matching channelName (case
-// insensitive). channel_name is a friendlier knob than channel_id but
-// trades a startup REST round-trip and the risk that a rename in
-// Discord breaks the gateway until config is refreshed.
-//
-// If guildHint is set we only consider the matching guild (also case
-// insensitive). Without it, the bot may legitimately be in multiple
-// guilds with the same channel name — those collisions surface as a
-// startup error so the operator picks one explicitly rather than
-// silently posting to the wrong server.
+// resolveChannelByName looks up a text channel by name across the
+// bot's guilds. guildHint, when set, narrows the search to one guild
+// — required when the bot is in multiple guilds with the same channel
+// name. Ambiguity (multiple matches with no hint) is a startup error,
+// not a silent pick.
 func resolveChannelByName(sess *discordgo.Session, channelName, guildHint string) (string, error) {
 	guilds, err := sess.UserGuilds(200, "", "", false)
 	if err != nil {

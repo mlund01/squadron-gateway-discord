@@ -112,9 +112,8 @@ func TestDecodeInteractionResponseRoutesByCustomID(t *testing.T) {
 	}
 }
 
-// fakeSquadronAPI implements gatewaysdk.SquadronAPI without touching
-// gRPC. Tests use it to exercise resolve flow in isolation. Records
-// each call so assertions can inspect what the gateway sent upstream.
+// fakeSquadronAPI exercises the resolve flow in-process; records
+// each call so tests can inspect what was sent upstream.
 type fakeSquadronAPI struct {
 	mu            sync.Mutex
 	resolveCalls  []resolveCall
@@ -148,10 +147,6 @@ func (f *fakeSquadronAPI) snapshotResolveCalls() []resolveCall {
 	return append([]resolveCall(nil), f.resolveCalls...)
 }
 
-// TestFakeAPIWiring confirms a fake SquadronAPI can be plugged into a
-// freshly constructed gateway and used by the resolve-handling code
-// path in isolation. This is the test seam any future integration
-// test would build on.
 func TestFakeAPIWiring(t *testing.T) {
 	api := &fakeSquadronAPI{
 		resolveResult: gatewaysdk.ResolveResult{

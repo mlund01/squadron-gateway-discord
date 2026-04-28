@@ -7,15 +7,8 @@ import (
 	gatewaysdk "github.com/mlund01/squadron-gateway-sdk"
 )
 
-// Outbound: posts and edits Discord messages in response to squadron
-// state changes (a new request appearing, an existing one resolving
-// from any surface). Inbound — operator clicks and replies — lives in
-// handlers.go.
-
-// postQuestion creates a Discord message representing an open
-// request. Idempotent on tool_call_id: if we've already posted this
-// one, we skip rather than double-post (catch-up replays may overlap
-// with live events).
+// postQuestion posts a fresh request to Discord. Idempotent on
+// tool_call_id so catch-up replays don't double-post.
 func (g *discordGateway) postQuestion(rec gatewaysdk.HumanInputRecord) error {
 	g.mu.Lock()
 	if _, exists := g.messages[rec.ToolCallID]; exists {
@@ -45,11 +38,9 @@ func (g *discordGateway) postQuestion(rec gatewaysdk.HumanInputRecord) error {
 	return nil
 }
 
-// markResolved edits the original Discord message: strikethrough on
-// the question, ✅ + answer underneath, components cleared so a stale
-// click can't try to re-resolve. No-op when we never posted the
-// question (e.g. the resolution arrived before we caught up) or when
-// the session is torn down mid-shutdown.
+// markResolved edits the original message: strikethrough question +
+// ✅ answer, components cleared so a stale click can't re-resolve.
+// No-op if we never posted this question or the session is shut down.
 func (g *discordGateway) markResolved(rec gatewaysdk.HumanInputRecord) error {
 	g.mu.Lock()
 	msgID, ok := g.messages[rec.ToolCallID]

@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// TestConfigureRejectsBadSettings exercises the up-front settings
-// validation in Configure. All three cases must fail before the
-// gateway attempts to dial Discord — that's what lets squadron's
-// gateway manager surface a specific config error to the operator
-// instead of an opaque network failure.
+// Settings validation must fail before any network call so squadron
+// surfaces a specific config error instead of an opaque dial failure.
 func TestConfigureRejectsBadSettings(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -52,12 +49,9 @@ func TestConfigureRejectsBadSettings(t *testing.T) {
 	}
 }
 
-// TestChannelNameStripsLeadingHash mirrors Configure's behavior of
-// accepting "#general" and stripping the leading hash. We exercise it
-// indirectly through a Configure call that fails on missing token —
-// before the channel-name lookup runs — so this test stays
-// network-free while still pinning down the trim behavior the README
-// promises.
+// channel_name accepts a leading "#"; we don't actually resolve here
+// (no network) — the test just pins that the leading "#" is parsed
+// off without panicking and validation reaches the bot_token check.
 func TestChannelNameStripsLeadingHash(t *testing.T) {
 	g := newDiscordGateway()
 	err := g.Configure(context.Background(), map[string]string{

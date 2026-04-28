@@ -11,16 +11,6 @@ import (
 	gatewaysdk "github.com/mlund01/squadron-gateway-sdk"
 )
 
-// discordGateway implements gatewaysdk.Gateway. The struct holds the
-// minimum dependencies the handlers need; the heavy lifting lives in
-// component-specific files:
-//
-//   - messages.go : postQuestion, markResolved (outbound to Discord)
-//   - handlers.go : onInteraction, onMessage (inbound from Discord)
-//   - render.go   : message body + components (pure functions)
-//   - customid.go : button/select-menu custom_id encoding
-//   - checkpoint.go : disconnect-recovery cursor on disk
-//   - channel.go  : channel-name → channel-id resolution
 type discordGateway struct {
 	api gatewaysdk.SquadronAPI
 
@@ -28,14 +18,11 @@ type discordGateway struct {
 	session   *discordgo.Session
 	channelID string
 
-	// messages maps tool_call_id → Discord message id so we can edit
-	// the message when squadron tells us the request was resolved
-	// (possibly by another surface, e.g. commander).
+	// tool_call_id → posted Discord message id, so we can edit the
+	// message when the request resolves (regardless of which surface
+	// resolved it).
 	messages map[string]string
 
-	// checkpointPath is the file the gateway uses to remember the
-	// latest event timestamp it has processed, so a restart catches
-	// up rather than replaying from the beginning of time.
 	checkpointPath string
 }
 
@@ -43,10 +30,6 @@ func newDiscordGateway() *discordGateway {
 	return &discordGateway{messages: map[string]string{}}
 }
 
-// Configure runs once at gateway startup. It validates settings,
-// opens the Discord session, registers handlers, resolves channel-by-
-// name (if requested), runs catch-up against squadron's API, and
-// hands control back so squadron can begin pushing live events.
 func (g *discordGateway) Configure(ctx context.Context, settings map[string]string, api gatewaysdk.SquadronAPI) error {
 	g.api = api
 
@@ -96,8 +79,7 @@ func (g *discordGateway) Configure(ctx context.Context, settings map[string]stri
 	g.mu.Unlock()
 
 	if err := g.catchUp(ctx); err != nil {
-		// Don't abort startup — the gateway can keep running on live
-		// events alone, and operators can resolve from another surface.
+		// Best-effort: a missed catch-up doesn't block live events.
 		log.Printf("catch-up failed: %v", err)
 	}
 
@@ -105,22 +87,15 @@ func (g *discordGateway) Configure(ctx context.Context, settings map[string]stri
 	return nil
 }
 
-// OnHumanInputRequested is called when squadron observes a new
-// builtins.human.ask request. We post it to the configured channel.
 func (g *discordGateway) OnHumanInputRequested(ctx context.Context, rec gatewaysdk.HumanInputRecord) error {
 	return g.postQuestion(rec)
 }
 
-// OnHumanInputResolved is called whenever a request transitions to
-// resolved, regardless of who resolved it. We edit the original
-// Discord message so the audit trail (and the buttons) reflect the
-// answer, and advance the catch-up cursor.
 func (g *discordGateway) OnHumanInputResolved(ctx context.Context, rec gatewaysdk.HumanInputRecord) error {
 	g.advanceCheckpoint(rec.ResolvedAt)
 	return g.markResolved(rec)
 }
 
-// Shutdown is called when squadron tears down the subprocess.
 func (g *discordGateway) Shutdown(ctx context.Context) error {
 	g.mu.Lock()
 	sess := g.session
@@ -132,11 +107,9 @@ func (g *discordGateway) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// catchUp is the reconnect-friendly bootstrap. Squadron returns
-// everything that happened since our local checkpoint and we replay
-// each row through the same handlers we use for live events. Failures
-// are logged per-row rather than aborting startup so a single bad row
-// doesn't block the rest of the catch-up.
+// catchUp replays everything since the local checkpoint through the
+// live-event handlers. Per-row failures are logged so one bad row
+// doesn't block the rest.
 func (g *discordGateway) catchUp(ctx context.Context) error {
 	rows, _, err := g.api.ListHumanInputs(ctx, gatewaysdk.HumanInputFilter{
 		Since:       g.readCheckpoint(),

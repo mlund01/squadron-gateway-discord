@@ -9,23 +9,6 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// Inbound: Discord events the bot reacts to. Two surfaces:
-//
-//   - Component interactions (button clicks + select-menu submissions)
-//   - Plain message replies (free-text answers)
-//
-// Both end at api.ResolveHumanInput; the squadron-side state machine
-// is the single source of truth.
-
-// onInteraction handles button clicks (single-select) and select-menu
-// submissions (multi-select). The custom_id picks which:
-//
-//   - sq::<tool_call_id>::__select__ → multi-select; values come from
-//     data.Values, JSON-encoded into the response
-//   - sq::<tool_call_id>::<choice>   → single-select button click
-//
-// Anything else is ignored — Discord may deliver interactions for
-// components we didn't render.
 func (g *discordGateway) onInteraction(s *discordgo.Session, i *discordgo.InteractionCreate) {
 	if i.Type != discordgo.InteractionMessageComponent {
 		return
@@ -49,10 +32,9 @@ func (g *discordGateway) onInteraction(s *discordgo.Session, i *discordgo.Intera
 		return
 	}
 
-	// Always silent-ack except when the row is genuinely gone. The
-	// edited message is the operator's confirmation; an extra ephemeral
-	// is noise. AlreadyResolved (race / duplicate / commander beat us)
-	// also goes silent — the message edit will follow shortly.
+	// Silent ack on success and on AlreadyResolved — the message edit
+	// is the operator's confirmation. NotFound surfaces a popup since
+	// the row is genuinely gone and the message won't be edited.
 	if res.NotFound {
 		_ = s.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 			Type: discordgo.InteractionResponseChannelMessageWithSource,
@@ -70,9 +52,9 @@ func (g *discordGateway) onInteraction(s *discordgo.Session, i *discordgo.Intera
 
 // decodeInteractionResponse maps a component interaction's custom_id
 // + values into the (toolCallID, response) pair we send to squadron.
-// Returns ok=false for any custom_id that didn't originate from this
-// gateway. JSON-encodes the multi-select values so the agent gets a
-// canonical array string instead of a Go-printed slice.
+// Returns ok=false for any custom_id that didn't originate here.
+// Multi-select values are JSON-encoded so the agent gets a canonical
+// array string instead of a Go-printed slice.
 func decodeInteractionResponse(customID string, values []string) (toolCallID, response string, ok bool) {
 	if tc, ok := decodeSelectMenuCustomID(customID); ok {
 		encoded, err := json.Marshal(values)
@@ -88,10 +70,8 @@ func decodeInteractionResponse(customID string, values []string) (toolCallID, re
 	return "", "", false
 }
 
-// onMessage handles free-text replies. A user replying to a question
-// message in the channel sends the message body as the response —
-// useful when there are no choices, or the user wants to override the
-// quick-reply options.
+// onMessage routes a free-text reply (a Discord reply to one of our
+// posted question messages) through to ResolveHumanInput.
 func (g *discordGateway) onMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.Author.Bot {
 		return
@@ -114,13 +94,9 @@ func (g *discordGateway) onMessage(s *discordgo.Session, m *discordgo.MessageCre
 	if err != nil {
 		_, _ = s.ChannelMessageSendReply(m.ChannelID, fmt.Sprintf("Could not submit: %v", err), m.Reference())
 	}
-	// AlreadyResolved is silent — the message edit will reflect the
-	// final state. Races are rare and the popup is more confusing than
-	// useful.
 }
 
-// lookupToolCallByMessageID finds the tool-call-id whose posted message
-// matches messageID, or "" if none. Caller holds g.mu.
+// lookupToolCallByMessageID — caller holds g.mu.
 func lookupToolCallByMessageID(messages map[string]string, messageID string) string {
 	for toolCallID, msgID := range messages {
 		if msgID == messageID {
@@ -130,9 +106,8 @@ func lookupToolCallByMessageID(messages map[string]string, messageID string) str
 	return ""
 }
 
-// discordResponderID picks the most stable identity for the user who
-// clicked. Falls back to the username when interaction-member info is
-// absent (DMs, missing intents, …).
+// discordResponderID prefers Member.User over Interaction.User
+// (Member is set in guild contexts; User in DMs / missing intents).
 func discordResponderID(i *discordgo.InteractionCreate) string {
 	if i.Member != nil && i.Member.User != nil {
 		return "discord:" + i.Member.User.Username

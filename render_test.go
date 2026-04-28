@@ -17,10 +17,8 @@ func TestDisplayResponder(t *testing.T) {
 	}
 }
 
-// TestTruncate pins the byte-budget contract: the result must always
-// fit within `max` bytes. Discord's component label limits are
-// measured in bytes-on-the-wire, so a naive `s[:max-1] + "…"` would
-// overshoot by 2 (the ellipsis is 3 bytes in UTF-8).
+// truncate's contract: result is at most `max` bytes (not runes).
+// "…" is 3 bytes in UTF-8 so a naive `s[:max-1] + "…"` overshoots by 2.
 func TestTruncate(t *testing.T) {
 	cases := []struct {
 		name string
@@ -40,8 +38,7 @@ func TestTruncate(t *testing.T) {
 				t.Errorf("truncate(%q, %d): got %q, want %q", tc.in, tc.max, got, tc.want)
 			}
 			if len(got) > tc.max {
-				t.Errorf("truncate(%q, %d) returned %d bytes; must be ≤ %d",
-					tc.in, tc.max, len(got), tc.max)
+				t.Errorf("truncate(%q, %d) returned %d bytes; must be ≤ %d", tc.in, tc.max, len(got), tc.max)
 			}
 		})
 	}

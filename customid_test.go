@@ -37,18 +37,16 @@ func TestDecodeCustomIDRejectsMalformed(t *testing.T) {
 	}
 }
 
-// TestSelectMenuCustomIDRoundTrip pins the namespace separation
-// between buttons and select-menus: a button's id must NOT
-// accidentally decode as a select-menu id, otherwise the dispatcher
-// in handlers.go would misclassify clicks as menu submissions.
 func TestSelectMenuCustomIDRoundTrip(t *testing.T) {
 	id := encodeSelectMenuCustomID("tc-abc")
 	tc, ok := decodeSelectMenuCustomID(id)
 	if !ok || tc != "tc-abc" {
 		t.Errorf("round-trip failed: encoded %q → decoded (%q, %v)", id, tc, ok)
 	}
+	// Button ids must NOT decode as select-menu ids — otherwise the
+	// dispatcher misclassifies clicks as menu submissions.
 	buttonID := encodeCustomID("tc-abc", "Option A")
 	if _, ok := decodeSelectMenuCustomID(buttonID); ok {
-		t.Errorf("button id %q decoded as select-menu id; the two namespaces must not collide", buttonID)
+		t.Errorf("button id %q decoded as select-menu id; namespaces must not collide", buttonID)
 	}
 }

@@ -8,17 +8,6 @@ import (
 	gatewaysdk "github.com/mlund01/squadron-gateway-sdk"
 )
 
-// Pure rendering of a HumanInputRecord into the Discord wire shape:
-// the message body (markdown text) and the components (buttons or
-// select-menu). All functions here are side-effect-free — they take a
-// record and return strings or component slices, so they're trivial
-// to unit-test in isolation.
-
-// buildMessageBody is the markdown text for a freshly-posted question.
-// Leads with the bold short_summary (or falls back to the question
-// when no summary), inlines the question and any additional_context,
-// and ends with a code-fenced "mission › task" trail so operators
-// can locate where the question came from.
 func buildMessageBody(rec gatewaysdk.HumanInputRecord) string {
 	var b strings.Builder
 	if rec.ShortSummary != "" {
@@ -46,9 +35,6 @@ func buildMessageBody(rec gatewaysdk.HumanInputRecord) string {
 	return b.String()
 }
 
-// buildResolvedBody is the markdown text the original message gets
-// edited to once the request is resolved: the question struck-through
-// and a ✅ + answer line.
 func buildResolvedBody(rec gatewaysdk.HumanInputRecord) string {
 	var b strings.Builder
 	if rec.ShortSummary != "" {
@@ -70,12 +56,9 @@ func buildResolvedBody(rec gatewaysdk.HumanInputRecord) string {
 	return b.String()
 }
 
-// formatResolvedResponse renders the answer for the resolved-body
-// line. For multi-select the on-the-wire response is a JSON array
-// string (`["A","C"]`) which we expand to a friendly comma list so
-// the channel doesn't show raw JSON. Falls back to the literal
-// response on parse failure — the audit trail keeps whatever squadron
-// stored.
+// formatResolvedResponse expands a multi-select JSON array into a
+// comma list. Falls back to the raw response on parse failure so the
+// audit trail keeps whatever squadron stored.
 func formatResolvedResponse(rec gatewaysdk.HumanInputRecord) string {
 	if !rec.MultiSelect {
 		return rec.Response
@@ -87,14 +70,10 @@ func formatResolvedResponse(rec gatewaysdk.HumanInputRecord) string {
 	return strings.Join(picks, ", ")
 }
 
-// buildComponents returns the action rows for a question.
-//
-//   - Single-select: a row of choice buttons (Discord caps 5 per row,
-//     5 rows, 25 total).
-//   - Multi-select: one StringSelect dropdown with MinValues=1,
-//     MaxValues=len(choices). Discord submits the interaction once
-//     the user closes the dropdown after picking.
-//   - No choices (free-text only): no components.
+// buildComponents picks the picker shape:
+//   - no choices → no components (free-text)
+//   - multi_select → a single StringSelect dropdown
+//   - else → action rows of buttons
 func buildComponents(rec gatewaysdk.HumanInputRecord) []discordgo.MessageComponent {
 	if len(rec.Choices) == 0 {
 		return nil
@@ -105,14 +84,14 @@ func buildComponents(rec gatewaysdk.HumanInputRecord) []discordgo.MessageCompone
 	return buildButtonComponents(rec)
 }
 
-// Discord component limits, named for readability.
+// Discord component limits.
 const (
-	maxButtonsPerRow      = 5
-	maxRows               = 5
-	maxButtons            = maxButtonsPerRow * maxRows
-	maxButtonLabelBytes   = 80  // Discord's per-button label cap
-	maxSelectOptionBytes  = 100 // Discord's per-option label cap
-	maxSelectMenuOptions  = 25
+	maxButtonsPerRow     = 5
+	maxRows              = 5
+	maxButtons           = maxButtonsPerRow * maxRows
+	maxButtonLabelBytes  = 80
+	maxSelectOptionBytes = 100
+	maxSelectMenuOptions = 25
 )
 
 func buildButtonComponents(rec gatewaysdk.HumanInputRecord) []discordgo.MessageComponent {
@@ -144,13 +123,10 @@ func buildSelectMenuComponents(rec gatewaysdk.HumanInputRecord) []discordgo.Mess
 		if i >= maxSelectMenuOptions {
 			break
 		}
-		options = append(options, discordgo.SelectMenuOption{
-			Label: truncate(choice, maxSelectOptionBytes),
-			// Value is what Discord sends back in data.Values when the
-			// user picks this option. We use the choice text itself so
-			// the gateway can echo it without an option-id lookup table.
-			Value: truncate(choice, maxSelectOptionBytes),
-		})
+		// Value=label so handlers.go can echo the choice back without an
+		// option-id lookup table.
+		label := truncate(choice, maxSelectOptionBytes)
+		options = append(options, discordgo.SelectMenuOption{Label: label, Value: label})
 	}
 	maxVals := len(options)
 	if maxVals > maxSelectMenuOptions {
@@ -171,10 +147,8 @@ func buildSelectMenuComponents(rec gatewaysdk.HumanInputRecord) []discordgo.Mess
 	}
 }
 
-// displayResponder renders a responder id for human display. Empty
-// responders happen when commander resolves with auth disabled (local
-// dev) or any future surface that doesn't track identity — in that
-// case we say "another operator" so the audit line still reads.
+// displayResponder substitutes a generic label when no responder id
+// was recorded — happens when commander resolves with auth disabled.
 func displayResponder(s string) string {
 	if s == "" {
 		return "another operator"
@@ -182,11 +156,9 @@ func displayResponder(s string) string {
 	return s
 }
 
-// truncate caps a string at `max` BYTES, replacing the tail with "…"
-// when truncation is needed. Discord rejects component labels that
-// exceed declared limits measured in bytes-on-the-wire, so a naive
-// `s[:max-1] + "…"` is wrong: "…" is 3 bytes in UTF-8 and would
-// overshoot by 2.
+// truncate caps a string at `max` BYTES (not runes), reserving space
+// for the 3-byte UTF-8 ellipsis. Discord enforces component label
+// limits on bytes-on-the-wire.
 func truncate(s string, max int) string {
 	const ellipsis = "…"
 	if len(s) <= max {
