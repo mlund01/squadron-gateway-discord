@@ -96,6 +96,10 @@ func (g *discordGateway) OnHumanInputResolved(ctx context.Context, rec gatewaysd
 	return g.markResolved(rec)
 }
 
+func (g *discordGateway) OnNotification(ctx context.Context, rec gatewaysdk.NotificationRecord) error {
+	return g.postNotification(rec)
+}
+
 func (g *discordGateway) Shutdown(ctx context.Context) error {
 	g.mu.Lock()
 	sess := g.session

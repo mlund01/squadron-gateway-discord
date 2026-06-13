@@ -35,6 +35,63 @@ func buildMessageBody(rec gatewaysdk.HumanInputRecord) string {
 	return b.String()
 }
 
+// notifyEmoji picks a leading glyph for the notification by event.
+func notifyEmoji(event string) string {
+	switch event {
+	case "mission_completed":
+		return "✅"
+	case "mission_failed":
+		return "❌"
+	case "mission_stopped":
+		return "⏹️"
+	default:
+		return "🔔"
+	}
+}
+
+// buildNotificationBody renders a one-way mission-lifecycle notification. For
+// completed missions it appends a compact, truncated rendering of the outputs.
+func buildNotificationBody(rec gatewaysdk.NotificationRecord) string {
+	var b strings.Builder
+	b.WriteString(notifyEmoji(rec.Event))
+	b.WriteString(" **")
+	if rec.Title != "" {
+		b.WriteString(rec.Title)
+	} else {
+		b.WriteString(rec.Event)
+	}
+	b.WriteString("**")
+	if rec.Message != "" {
+		b.WriteString("\n")
+		b.WriteString(rec.Message)
+	}
+	if rec.Error != "" {
+		b.WriteString("\n```\n")
+		b.WriteString(truncate(rec.Error, 1500))
+		b.WriteString("\n```")
+	}
+	if rec.OutputsJSON != "" {
+		b.WriteString("\n**Outputs**\n```json\n")
+		b.WriteString(truncate(prettyJSON(rec.OutputsJSON), 1500))
+		b.WriteString("\n```")
+	}
+	return b.String()
+}
+
+// prettyJSON re-indents a JSON string for display; returns the input
+// unchanged when it isn't valid JSON.
+func prettyJSON(s string) string {
+	var v interface{}
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s
+	}
+	out, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return s
+	}
+	return string(out)
+}
+
 func buildResolvedBody(rec gatewaysdk.HumanInputRecord) string {
 	var b strings.Builder
 	if rec.ShortSummary != "" {

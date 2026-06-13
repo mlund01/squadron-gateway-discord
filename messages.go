@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"strings"
 
 	"github.com/bwmarrin/discordgo"
 	gatewaysdk "github.com/mlund01/squadron-gateway-sdk"
@@ -36,6 +38,56 @@ func (g *discordGateway) postQuestion(rec gatewaysdk.HumanInputRecord) error {
 
 	g.advanceCheckpoint(rec.RequestedAt)
 	return nil
+}
+
+// postNotification posts a one-way mission-lifecycle notification. Unlike
+// questions there is nothing to track or edit, so no idempotency map. When the
+// record carries a per-mission channel override it is resolved here, falling
+// back to the configured default channel.
+func (g *discordGateway) postNotification(rec gatewaysdk.NotificationRecord) error {
+	g.mu.Lock()
+	sess := g.session
+	channel := g.channelID
+	g.mu.Unlock()
+	if sess == nil {
+		return fmt.Errorf("discord session not initialized")
+	}
+	if rec.Channel != "" {
+		channel = g.resolveNotifyChannel(sess, rec.Channel, channel)
+	}
+
+	if _, err := sess.ChannelMessageSend(channel, buildNotificationBody(rec)); err != nil {
+		return fmt.Errorf("send notification: %w", err)
+	}
+	return nil
+}
+
+// resolveNotifyChannel turns a per-mission channel override into a channel ID.
+// A numeric override is treated as an ID; anything else is resolved by name
+// (leading '#' stripped). On any failure it logs and falls back to def.
+func (g *discordGateway) resolveNotifyChannel(sess *discordgo.Session, override, def string) string {
+	if isNumericID(override) {
+		return override
+	}
+	name := strings.TrimPrefix(override, "#")
+	resolved, err := resolveChannelByName(sess, name, "")
+	if err != nil {
+		log.Printf("notification channel override %q: %v — falling back to default", override, err)
+		return def
+	}
+	return resolved
+}
+
+func isNumericID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // markResolved edits the original message: strikethrough question +
