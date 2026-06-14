@@ -62,6 +62,25 @@ func (g *discordGateway) postNotification(rec gatewaysdk.NotificationRecord) err
 	return nil
 }
 
+// postText posts a free-form message, honoring an optional channel override
+// (falling back to the configured default channel). Backs builtins.gateway.post.
+func (g *discordGateway) postText(channelOverride, text string) error {
+	g.mu.Lock()
+	sess := g.session
+	channel := g.channelID
+	g.mu.Unlock()
+	if sess == nil {
+		return fmt.Errorf("discord session not initialized")
+	}
+	if channelOverride != "" {
+		channel = g.resolveNotifyChannel(sess, channelOverride, channel)
+	}
+	if _, err := sess.ChannelMessageSend(channel, text); err != nil {
+		return fmt.Errorf("post message: %w", err)
+	}
+	return nil
+}
+
 // resolveNotifyChannel turns a per-mission channel override into a channel ID.
 // A numeric override is treated as an ID; anything else is resolved by name
 // (leading '#' stripped). On any failure it logs and falls back to def.

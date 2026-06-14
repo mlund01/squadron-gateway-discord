@@ -100,6 +100,10 @@ func (g *discordGateway) OnNotification(ctx context.Context, rec gatewaysdk.Noti
 	return g.postNotification(rec)
 }
 
+func (g *discordGateway) PostMessage(ctx context.Context, req gatewaysdk.PostMessageRequest) error {
+	return g.postText(req.Channel, req.Text)
+}
+
 func (g *discordGateway) Shutdown(ctx context.Context) error {
 	g.mu.Lock()
 	sess := g.session
