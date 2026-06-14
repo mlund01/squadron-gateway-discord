@@ -101,7 +101,14 @@ func (g *discordGateway) OnNotification(ctx context.Context, rec gatewaysdk.Noti
 }
 
 func (g *discordGateway) PostMessage(ctx context.Context, req gatewaysdk.PostMessageRequest) error {
-	return g.postText(req.Channel, req.Text)
+	return g.postMessage(req.Payload)
+}
+
+func (g *discordGateway) MessageToolSpec(ctx context.Context) (gatewaysdk.MessageToolSpec, error) {
+	return gatewaysdk.MessageToolSpec{
+		Description: discordPostDescription,
+		ParamsSchema: discordPostSchema,
+	}, nil
 }
 
 func (g *discordGateway) Shutdown(ctx context.Context) error {
