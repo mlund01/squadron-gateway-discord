@@ -4,10 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"path"
 	"strings"
 
 	"github.com/bwmarrin/discordgo"
@@ -72,8 +69,7 @@ func (g *discordGateway) postNotification(rec gatewaysdk.NotificationRecord) err
 const discordPostDescription = "Post a message to the Discord channel. " +
 	"`text` is the message body and supports Discord markdown (**bold**, _italics_, `code`, > quotes, lists, links). " +
 	"`channel` optionally overrides the destination — a channel name (with or without a leading #) or id. " +
-	"`embeds` is an optional array of rich embed cards. " +
-	"`attachments` is an optional array of URLs to fetch and attach as files (images, etc.)."
+	"`embeds` is an optional array of rich embed cards."
 
 const discordPostSchema = `{
   "type": "object",
@@ -92,17 +88,15 @@ const discordPostSchema = `{
           "color": {"type": "integer", "description": "Decimal RGB color, e.g. 5763719."}
         }
       }
-    },
-    "attachments": {"type": "array", "items": {"type": "string"}, "description": "URLs to fetch and attach as files."}
+    }
   },
   "required": ["text"]
 }`
 
 type discordPostPayload struct {
-	Text        string         `json:"text"`
-	Channel     string         `json:"channel,omitempty"`
-	Embeds      []discordEmbed `json:"embeds,omitempty"`
-	Attachments []string       `json:"attachments,omitempty"`
+	Text    string         `json:"text"`
+	Channel string         `json:"channel,omitempty"`
+	Embeds  []discordEmbed `json:"embeds,omitempty"`
 }
 
 type discordEmbed struct {
@@ -113,9 +107,9 @@ type discordEmbed struct {
 }
 
 // postMessage renders a builtins.gateway.post payload (text + markdown,
-// embeds, fetched URL attachments) and posts it, honoring an optional channel
-// override (falling back to the configured default channel).
-func (g *discordGateway) postMessage(payload string) error {
+// embeds) plus squadron-supplied file attachments and posts it, honoring an
+// optional channel override (falling back to the configured default channel).
+func (g *discordGateway) postMessage(payload string, attachments []gatewaysdk.FileAttachment) error {
 	var p discordPostPayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		return fmt.Errorf("parse message payload: %w", err)
@@ -140,40 +134,21 @@ func (g *discordGateway) postMessage(payload string) error {
 			Color:       e.Color,
 		})
 	}
-	for _, url := range p.Attachments {
-		if f := fetchAttachment(url); f != nil {
-			msg.Files = append(msg.Files, f)
+	for _, a := range attachments {
+		name := a.Filename
+		if name == "" {
+			name = "attachment"
 		}
+		msg.Files = append(msg.Files, &discordgo.File{
+			Name:        name,
+			ContentType: a.MimeType,
+			Reader:      bytes.NewReader(a.Content),
+		})
 	}
 	if _, err := sess.ChannelMessageSendComplex(channel, msg); err != nil {
 		return fmt.Errorf("post message: %w", err)
 	}
 	return nil
-}
-
-// fetchAttachment downloads a URL into a Discord file (capped at 25 MB).
-// Returns nil on any failure so one bad URL doesn't sink the whole post.
-func fetchAttachment(url string) *discordgo.File {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Printf("attachment %q: %v", url, err)
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("attachment %q: status %d", url, resp.StatusCode)
-		return nil
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 25<<20))
-	if err != nil {
-		log.Printf("attachment %q: %v", url, err)
-		return nil
-	}
-	name := path.Base(resp.Request.URL.Path)
-	if name == "" || name == "." || name == "/" {
-		name = "attachment"
-	}
-	return &discordgo.File{Name: name, Reader: bytes.NewReader(data)}
 }
 
 // resolveNotifyChannel turns a per-mission channel override into a channel ID.

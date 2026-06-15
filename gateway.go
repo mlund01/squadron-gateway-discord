@@ -101,7 +101,7 @@ func (g *discordGateway) OnNotification(ctx context.Context, rec gatewaysdk.Noti
 }
 
 func (g *discordGateway) PostMessage(ctx context.Context, req gatewaysdk.PostMessageRequest) error {
-	return g.postMessage(req.Payload)
+	return g.postMessage(req.Payload, req.Attachments)
 }
 
 func (g *discordGateway) MessageToolSpec(ctx context.Context) (gatewaysdk.MessageToolSpec, error) {

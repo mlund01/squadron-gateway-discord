@@ -10,14 +10,15 @@ import (
 
 // TestPostPayloadParsing pins the JSON contract the LLM produces against
 // the Go struct postMessage decodes. A renamed/dropped json tag here means
-// the agent's text, channel, embeds, or attachments silently never reach
-// Discord — so every field of a full payload must survive the unmarshal.
+// the agent's text, channel, or embeds silently never reach Discord — so
+// every field of a full payload must survive the unmarshal. Attachments are
+// NOT part of the payload: squadron resolves local files and ships them as
+// PostMessageRequest.Attachments bytes, so they never appear in this JSON.
 func TestPostPayloadParsing(t *testing.T) {
 	raw := `{
 		"text": "deploy done",
 		"channel": "#ops",
-		"embeds": [{"title": "v2", "description": "shipped", "url": "https://x", "color": 5}],
-		"attachments": ["https://example.com/a.png", "https://example.com/b.png"]
+		"embeds": [{"title": "v2", "description": "shipped", "url": "https://x", "color": 5}]
 	}`
 
 	var p discordPostPayload
@@ -37,9 +38,6 @@ func TestPostPayloadParsing(t *testing.T) {
 	if e.Title != "v2" || e.Description != "shipped" || e.URL != "https://x" || e.Color != 5 {
 		t.Errorf("embed fields lost: %+v", e)
 	}
-	if len(p.Attachments) != 2 || p.Attachments[0] != "https://example.com/a.png" {
-		t.Errorf("Attachments: got %v", p.Attachments)
-	}
 }
 
 func TestPostPayloadTextOnly(t *testing.T) {
@@ -50,7 +48,7 @@ func TestPostPayloadTextOnly(t *testing.T) {
 	if p.Text != "hi" {
 		t.Errorf("Text: got %q", p.Text)
 	}
-	if p.Channel != "" || len(p.Embeds) != 0 || len(p.Attachments) != 0 {
+	if p.Channel != "" || len(p.Embeds) != 0 {
 		t.Errorf("optional fields should be empty: %+v", p)
 	}
 }
