@@ -35,6 +35,41 @@ func buildMessageBody(rec gatewaysdk.HumanInputRecord) string {
 	return b.String()
 }
 
+// notifyEmoji picks a leading glyph for the notification by event.
+func notifyEmoji(event string) string {
+	switch event {
+	case "mission_completed":
+		return "✅"
+	case "mission_failed":
+		return "❌"
+	default:
+		return "🔔"
+	}
+}
+
+// buildNotificationBody renders a one-way mission-lifecycle notification.
+func buildNotificationBody(rec gatewaysdk.NotificationRecord) string {
+	var b strings.Builder
+	b.WriteString(notifyEmoji(rec.Event))
+	b.WriteString(" **")
+	if rec.Title != "" {
+		b.WriteString(rec.Title)
+	} else {
+		b.WriteString(rec.Event)
+	}
+	b.WriteString("**")
+	if rec.Message != "" {
+		b.WriteString("\n")
+		b.WriteString(rec.Message)
+	}
+	if rec.Error != "" {
+		b.WriteString("\n```\n")
+		b.WriteString(truncate(rec.Error, 1500))
+		b.WriteString("\n```")
+	}
+	return b.String()
+}
+
 func buildResolvedBody(rec gatewaysdk.HumanInputRecord) string {
 	var b strings.Builder
 	if rec.ShortSummary != "" {
